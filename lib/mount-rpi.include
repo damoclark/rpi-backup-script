@@ -1,0 +1,152 @@
+#!/bin/sh
+
+function mount_rpi_usage
+{
+	cat <<EOF
+Usage: mount-rpi.sh [OPTION]... CONFIG_FILE
+
+Mount Raspbian image file to directory
+
+  -a    Attach image to device file only (don't mount image)
+  -n    Dry run (only show what actions would be taken)
+  -r    Read only attachment/mounting
+  -f    Fsck (file system check) partitions before mounting
+  -h    This usage information
+
+You must specify a CONFIG_FILE. Others are optional
+EOF
+}
+
+function mount_rpi
+{
+	#Reset in case getopts has been called before
+	OPTIND=0
+	#Get location of this script:
+	#http://www.ostricher.com/2014/10/the-right-way-to-get-the-directory-of-a-bash-script/
+	local sp="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+	
+	#Load script libraries
+	. "${sp}/../lib/load_config.include"
+	. "${sp}/../lib/utilities.include"
+	
+	declare -A opts
+	getopts_kpartx=''
+	getopts_mount=''
+	#Get command line args and process
+	while getopts "ranfh" opt
+	do
+		case $opt in
+		n) #Dry run
+			getopts_kpartx="$getopts_kpartx -l"
+			opts[n]='true'
+			;;
+		r) #Readonly
+			getopts_kpartx="$getopts_kpartx -r"
+			getopts_mount="$getopts_mount -r"
+			opts[r]='true'
+			;;
+		a)
+			opts[a]='true'
+			;;
+		f)
+			opts[f]='true'
+			;;
+		h)
+			mount_rpi_usage
+			exit 0
+			;;
+		esac
+	done
+
+	#Eleminate all switches, leaving only operands (ie config filename)
+	shift $((OPTIND-1))
+
+	#Load configuration file given on command line
+	load_config "$1"
+	
+	/bin/echo
+	echo "Mounting $destfile onto $destroot"
+	
+	pid=$$
+	local partfile="/tmp/${srchost}-partitions-${pid}.txt"
+	local orderfile="/tmp/order.$pid"
+	
+	#Has a loopback already been created?
+	kpartx "$destfile" > "$partfile"
+	if is_detached "$partfile"
+	then
+		#Create loopback
+		/bin/echo
+		echo "Creating loopback device for backup file $destfile"
+		kpartx -av $getopts_kpartx -s "$destfile" >"$partfile"
+	
+		#If we couldn't attach the loopback, output error
+		if [ $? -ne 0 ]
+		then
+			cat "$partfile"
+			exit 1
+		fi
+	else
+		echo "Loopback already assigned for file $destfile"
+	fi
+	
+	#Extract the partition device files from the output of kpartx, which looks like:
+	#add map loop0p1 (253:9): 0 143360 linear /dev/loop0 4096
+	#add map loop0p2 (253:19): 0 15372288 linear /dev/loop0 151552
+	
+	#Get the full path to the partition device files
+	get_parts "$partfile" #partition device files returned in 'parts' variable
+	
+	#Get device file
+	get_device "$partfile" #loopback device file returned in 'device' variable
+	
+	echo
+	echo "Device: $device"
+	
+	#Output the contents of the partition table from the image file
+	cat $partfile
+	
+	#Get proper order to mount the partitions
+	for k in "${!destpart[@]}"
+	do
+		echo $k ${#destpart["$k"]}
+	done | sort -k2 -n|cut -d' ' -f1 >$orderfile
+	local order=`cat $orderfile`
+	
+	#If -f fsck option given, then fsck partition before mounting
+	if [ -n "${opts[f]}" ]
+	then
+		for part in ${order[@]} #Use sorted partition numbers to fsck
+		do
+			echo "fsck /dev/mapper/${device}p${part}"
+			test -z "${opts[n]}" && fsck -f "/dev/mapper/${device}p${part}"
+		done
+	fi
+	
+	#If -a (attach only), then dont mount anything and return here
+	test -n "${opts[a]}" && return 0
+	
+	#Mount partitions
+	for part in ${order[@]} #Use sorted partition numbers to mount
+	do
+		#Strip off any trailing / characters
+		local mp=`echo "$destroot${destpart[$part]}" | sed -e 's/\/\+$//'`
+		df | grep -q "$mp" #Already mounted
+		if [ $? -eq 1 ]
+		then
+			echo mount "/dev/mapper/${device}p${part}" "$mp"
+			#If directory doesnt exist, create it
+			test -e "$mp" || mkdir -p "$mp"
+			#If -n not specified, then mount
+			test -z "${opts[n]}" && mount "/dev/mapper/${device}p${part}" "$mp"
+		else
+			echo "Already mounted /dev/mapper/${device}p${part}" '->' "$mp"
+		fi
+		/bin/echo
+		test -z "${opts[n]}" && df "$mp"
+		/bin/echo
+	done
+	
+	
+	rm -f "$orderfile" "$partfile"
+}

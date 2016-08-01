@@ -1,0 +1,155 @@
+#!/bin/sh
+
+#Get location of this script:
+#http://www.ostricher.com/2014/10/the-right-way-to-get-the-directory-of-a-bash-script/
+sp="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+#Set script defaults before loading config
+#Default rsync options for typical UNIX-like filesystems (e.g. ext[234],xfs, etc)
+declare -A rsyncfs[default]='-av -H -A -X --numeric-ids'
+#Default rsync options for MSDOS-based filesystems like vfat
+rsyncfs[vfat]='-rvt --modify-window=1'
+rsyncfs[msdos]="${rsyncfs[vfat]}"
+#Standard rsync options for all filesystems
+rsync='--delete --one-file-system'
+
+#Initialise variable holding command line configuration
+getopts_rsync=''
+getopts_zerofree=''
+
+#Get command line args and process
+declare -A opts
+while getopts "hnszc" opt
+do
+  case $opt in
+  n)
+    getopts_rsync="$getopts_rsync --dry-run"
+		getopts_zerofree="$getopts_zerofree -n"
+		opts[n]='1'
+    ;;
+  c)
+    getopts_rsync="$getopts_rsync -c"
+		opts[c]='1'
+    ;;
+  s)
+		opts[s]='1'
+    ;;
+  z)
+		opts[z]='1'
+    ;;
+  h)
+		cat <<EOF
+Usage: backup-rpi.sh [OPTION]... CONFIG_FILE
+
+Backup running Raspberry Pi over network to local image file
+
+  -c    Compare each file for backup rather than simply compare file modify/size
+  -n    Dry run (only show what actions would be taken)
+  -s    Sparsify the image file
+  -z    Run zerofree over the image file after backup complete
+  -h    This usage information
+
+You must specify a CONFIG_FILE. Others are optional
+EOF
+		exit 0
+    ;;
+  esac
+done
+
+#Eleminate all switches, leaving only operands (ie config filename)
+shift $((OPTIND-1))
+
+#Load script libraries
+. "${sp}/../lib/load_config.include"
+. "${sp}/../lib/mount-rpi.include"
+. "${sp}/../lib/umount-rpi.include"
+
+#Load configuration file given on command line
+load_config "$1" || exit 1
+
+date
+
+/bin/echo
+echo "Commencing backup of $srchost"
+/bin/echo
+
+mount_rpi "$1" || exit 1
+
+#Alter configuration according to command line arguments
+rsync="$rsync $getopts_rsync"
+
+#Variable to hold a list of ext[234] partition numbers from back image file
+declare -a ext_parts=()
+
+#Backup partitions
+for part in ${!destpart[@]} #Get partition numbers from config file
+do
+	#Get filesystem type for this partition
+	fstype=`blkid -s TYPE -o value "/dev/mapper/${device}p${part}"`
+	echo "${srchost}:${destpart[$part]} -> $destroot${destpart[$part]} (${fstype})"
+	
+	#Set rsync command line to use the default filesystem options
+	rsyncoptions="${rsyncfs[default]}"
+	
+	#But if options have been specified for this particular filesystem $fstype
+	if [ -n "${rsyncfs[$fstype]}" ]
+	then #Use them instead
+		rsyncoptions="${rsyncfs[$fstype]}"
+	fi
+
+	#Append general rsync options
+	rsyncoptions="$rsyncoptions $rsync"
+
+	echo "options: $rsyncoptions"
+
+	rsync $rsyncoptions "${srchost}:${destpart[$part]}" "$destroot${destpart[$part]}"
+	/bin/echo
+	
+	#If this is an ext[234] filesystem, then add it to our ext_parts array
+	[[ "$fstype" == ext* ]] && ext_parts+=($part)
+done
+
+#Capture process id for temp files
+pid=$$
+
+#If we have been asked to use zerofree and then run it on all found ext[234] partitions
+if [ -n "${opts[z]}" ]
+then
+	echo "Umount file systems so can run zerofree"
+	#Umount filesystems only (leave image attached to loopback device)
+	umount_rpi -u "$1" || exit 1
+	
+	for part in ${ext_parts[@]} #Get partition numbers from config file
+	do
+		echo "Running zerofree over filesystem ${destpart[$part]} (device file /dev/mapper/${device}p${part})"
+		#@todo iterate over file system
+		zerofree $getopts_zerofree "/dev/mapper/${device}p${part}"
+	done
+fi
+
+echo "Umounting backup image file"
+umount_rpi "$1" || exit 1
+
+#@todo run sparsify if asked to
+if [ -n "${opts[s]}" ]
+then
+	#Does your OS support fallocate --dig-holes option
+	fallocate -h | grep -q dig
+	if [ $? -eq 0 ]
+	then
+		echo "Running fallocate -d $destfile"
+		fallocate -d "$destfile"
+	else
+		#Do it the hard way
+		echo "Making $destfile sparse with cp"
+		cp --sparse=always "$destfile" "$destfile.$pid"
+		echo "Replacing $destfile with $destfile.$pid"
+		mv -f "$destfile.$pid" "$destfile"
+	fi
+		
+fi
+
+echo "Backup complete"
+
+date
+

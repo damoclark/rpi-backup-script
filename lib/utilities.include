@@ -1,0 +1,24 @@
+#!/bin/bash
+
+
+function get_parts
+{
+	local partfile="$1"
+
+	#Get the full path to the partition device files
+	parts=(`sed -e 's/^.*loop\([0-9]\+\)p\([0-9]\+\) .*$/\/dev\/mapper\/loop\1p\2/' $partfile`)
+}
+
+function get_device
+{
+	local partfile="$1"
+	device=`sed -e 's/^.*\/dev\/\(loop[0-9]\+\) .*$/\1/' <$partfile |grep -v '^$'|grep -v 'loop deleted '|sort|uniq|tr -d '\n'`
+}
+
+function is_detached
+{
+	local partfile="$1"
+	
+	#Is destfile dettached from a loopback device
+	cat "$partfile" | grep -q 'loop deleted '
+}

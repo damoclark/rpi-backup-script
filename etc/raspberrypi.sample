@@ -1,0 +1,26 @@
+#Sample Configuration file for backup-rpi
+
+#Copy this file to a new name, and change the options below to suit
+
+#Specify the hostname or ip address of Raspbery Pi Computer
+srchost='raspberrypi'
+
+#Specify the image file to mount
+destfile="/backups/raspberrypi.img"
+
+#Specify the local directory on which to mount the image file
+destroot='/mnt/raspberrypi'
+
+#Specify the partition number and mount point under destroot for each partition
+#in the image
+destpart[1]='/boot' #/dev/mmcblk0p1
+destpart[2]='/' #/dev/mmcblk0p2
+
+#Rsync default options (dont change unless you know what you are doing)
+#Default rsync options for typical UNIX-like filesystems (e.g. ext[234],xfs, etc)
+rsyncfs[default]='-av -H -A -X --numeric-ids'
+#Default rsync options for MSDOS-based filesystems like vfat
+rsyncfs[vfat]='-rvt --modify-window=1'
+rsyncfs[msdos]="${rsyncfs[vfat]}"
+#Standard rsync options for all filesystems
+rsync='--delete --one-file-system'
