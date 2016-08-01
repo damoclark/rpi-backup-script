@@ -22,3 +22,4 @@
 1. Add -f option to umount-rpi so that the image can be fsck'ed just before unmounting
 1. Add -f option to backup-rpi so that the image can be fsck'ed before and after
 the backup process
+1. Add -q quiet option to all scripts (useful for backup-rpi so can quieten mount and umount output)
