@@ -74,7 +74,7 @@ function umount_rpi
 		umount "$mp"
 	done
 	
-	kpartx "$destfile" >"$partfile"
+	/sbin/kpartx "$destfile" >"$partfile"
 
 	if ! is_detached "$partfile"
 	then
@@ -84,7 +84,7 @@ function umount_rpi
 			#Destroy loopback
 			/bin/echo
 			echo "Destroy loopback device for backup file $destfile"
-			kpartx -d "$destfile" || exit 1
+			/sbin/kpartx -d "$destfile" || exit 1
 		else
 			echo "Leaving image file $destfile attached to $device"
 		fi

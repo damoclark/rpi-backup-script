@@ -85,7 +85,7 @@ declare -a ext_parts=()
 for part in ${!destpart[@]} #Get partition numbers from config file
 do
 	#Get filesystem type for this partition
-	fstype=`blkid -s TYPE -o value "/dev/mapper/${device}p${part}"`
+	fstype=`/sbin/blkid -s TYPE -o value "/dev/mapper/${device}p${part}"`
 	echo "${srchost}:${destpart[$part]} -> $destroot${destpart[$part]} (${fstype})"
 	
 	#Set rsync command line to use the default filesystem options
@@ -102,7 +102,7 @@ do
 
 	echo "options: $rsyncoptions"
 
-	rsync $rsyncoptions "${srchost}:${destpart[$part]}" "$destroot${destpart[$part]}"
+	/bin/rsync $rsyncoptions "${srchost}:${destpart[$part]}" "$destroot${destpart[$part]}"
 	/bin/echo
 	
 	#If this is an ext[234] filesystem, then add it to our ext_parts array

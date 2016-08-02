@@ -72,13 +72,13 @@ function mount_rpi
 	local orderfile="/tmp/order.$pid"
 	
 	#Has a loopback already been created?
-	kpartx "$destfile" > "$partfile"
+	/sbin/kpartx "$destfile" > "$partfile"
 	if is_detached "$partfile"
 	then
 		#Create loopback
 		/bin/echo
 		echo "Creating loopback device for backup file $destfile"
-		kpartx -av $getopts_kpartx -s "$destfile" >"$partfile"
+		/sbin/kpartx -av $getopts_kpartx -s "$destfile" >"$partfile"
 	
 		#If we couldn't attach the loopback, output error
 		if [ $? -ne 0 ]
