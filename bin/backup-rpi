@@ -8,7 +8,7 @@ sp="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 #Default rsync options for typical UNIX-like filesystems (e.g. ext[234],xfs, etc)
 declare -A rsyncfs[default]='-av -H -A -X --numeric-ids'
 #Default rsync options for MSDOS-based filesystems like vfat
-rsyncfs[vfat]='-rvt --modify-window=1'
+rsyncfs[vfat]='-rcvt --modify-window=1'
 rsyncfs[msdos]="${rsyncfs[vfat]}"
 #Standard rsync options for all filesystems
 rsync='--delete --one-file-system'
