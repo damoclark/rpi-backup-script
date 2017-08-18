@@ -84,6 +84,9 @@ declare -a ext_parts=()
 #Backup partitions
 for part in ${!destpart[@]} #Get partition numbers from config file
 do
+	#Append / if not already to source & dest paths
+	[[ $destpart[$part] == */ ]] || destpart[$part]="${destpart[$part]}/"
+	[[ $destroot[$part] == */ ]] || destroot[$part]="${destroot[$part]}/"
 	#Get filesystem type for this partition
 	fstype=`/sbin/blkid -s TYPE -o value "/dev/mapper/${device}p${part}"`
 	echo "${srchost}:${destpart[$part]} -> $destroot${destpart[$part]} (${fstype})"
